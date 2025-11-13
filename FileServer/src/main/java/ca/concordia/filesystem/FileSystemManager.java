@@ -161,5 +161,5 @@ public class FileSystemManager {
         System.out.println("\n=============================");
     }
 
-    // Later you can add: readFile, writeFile, etc.
+    // Later we can add: readFile, writeFile, etc.
 }
