@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
+
 public class FileSystemManager {
 
     // Limits from skeleton
@@ -131,14 +132,90 @@ public class FileSystemManager {
         }
     }
 
-    public List<String> listFiles() {
+    public String[] listFiles() {
         List<String> files = new ArrayList<>();
         for (FEntry e : inodeTable) {
             if (e != null) {
                 files.add(e.getFilename() + " (" + e.getFilesize() + " bytes)");
             }
         }
-        return files;
+        return files.toArray(new String[0]);
+    }
+
+    public void writeFile(String filename, String content) throws IOException {
+        globalLock.lock();
+        try {
+            int idx = lookupFile(filename);
+            if (idx == -1) {
+                throw new IllegalArgumentException("ERROR: file " + filename + " does not exist");
+            }
+
+            FEntry entry = inodeTable[idx];
+            byte[] data = content.getBytes();
+            int requiredBlocks = (int) Math.ceil((double) data.length / BLOCK_SIZE);
+
+            if (requiredBlocks > MAXBLOCKS - 1) {
+                throw new IllegalStateException("ERROR: content too large for file system");
+            }
+
+            // Allocate blocks
+            List<Integer> blockIndices = new ArrayList<>();
+            for (int i = 0; i < requiredBlocks; i++) {
+                int blockNum = findFreeBlock();
+                if (blockNum == -1) {
+                    throw new IllegalStateException("ERROR: not enough free blocks");
+                }
+                blockIndices.add(blockNum);
+                freeBlockList[blockNum] = false;
+            }
+
+            // Write data to disk
+            for (int i = 0; i < blockIndices.size(); i++) {
+                int blockNum = blockIndices.get(i);
+                long offset = (long) blockNum * BLOCK_SIZE;
+                disk.seek(offset);
+
+                int bytesToWrite = Math.min(BLOCK_SIZE, data.length - i * BLOCK_SIZE);
+                disk.write(data, i * BLOCK_SIZE, bytesToWrite);
+            }
+
+            // Update entry
+            entry.setFilesize((short) data.length);
+            entry.setFirstBlock(blockIndices.get(0).shortValue());
+
+            System.out.println("Wrote " + data.length + " bytes to file: " + filename);
+        } finally {
+            globalLock.unlock();
+        }
+    }
+
+    public String readFile(String filename) throws IOException {
+        globalLock.lock();
+        try {
+            int idx = lookupFile(filename);
+            if (idx == -1) {
+                throw new IllegalArgumentException("ERROR: file " + filename + " does not exist");
+            }
+
+            FEntry entry = inodeTable[idx];
+            if (entry.getFilesize() == 0) {
+                return "";
+            }
+
+            short firstBlock = entry.getFirstBlock();
+            int filesize = entry.getFilesize();
+            byte[] data = new byte[filesize];
+
+            // Read from disk
+            long offset = (long) firstBlock * BLOCK_SIZE;
+            disk.seek(offset);
+            disk.readFully(data);
+
+            System.out.println("Read " + filesize + " bytes from file: " + filename);
+            return new String(data);
+        } finally {
+            globalLock.unlock();
+        }
     }
 
     // Debug helper for Phase 1 testing
@@ -160,6 +237,4 @@ public class FileSystemManager {
         }
         System.out.println("\n=============================");
     }
-
-    // Later we can add: readFile, writeFile, etc.
 }
