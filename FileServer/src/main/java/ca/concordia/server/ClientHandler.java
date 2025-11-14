@@ -2,10 +2,7 @@ package ca.concordia.server;
 
 import ca.concordia.filesystem.FileSystemManager;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.Socket;
 
 public class ClientHandler implements Runnable {
@@ -27,6 +24,7 @@ public class ClientHandler implements Runnable {
             String line;
             while ((line = in.readLine()) != null) {
                 line = line.trim();
+                System.out.println("Received from client: " + line);
 
                 if (line.equalsIgnoreCase("exit")) {
                     break;
@@ -34,6 +32,7 @@ public class ClientHandler implements Runnable {
 
                 String response = processCommand(line);
                 out.println(response);
+                System.out.println("Sent to client: " + response);
             }
 
         } catch (IOException e) {
@@ -76,8 +75,10 @@ public class ClientHandler implements Runnable {
             FileSystemManager fsm = FileSystemManager.getInstance("filesystem.dat", 1280);
             fsm.createFile(parts[1]);
             return "OK: File created";
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return "ERROR: " + e.getMessage();
+        } catch (Exception e) {
+            return "ERROR: Could not create file";
         }
     }
 
@@ -88,8 +89,8 @@ public class ClientHandler implements Runnable {
 
         try {
             FileSystemManager fsm = FileSystemManager.getInstance("filesystem.dat", 1280);
-            fsm.writeFile(parts[1], parts[2]);
-            return "OK: Content written";
+            boolean success = fsm.writeFile(parts[1], parts[2]);
+            return success ? "OK: Content written" : "ERROR: Could not write to file";
         } catch (Exception e) {
             return "ERROR: " + e.getMessage();
         }
@@ -118,8 +119,10 @@ public class ClientHandler implements Runnable {
             FileSystemManager fsm = FileSystemManager.getInstance("filesystem.dat", 1280);
             fsm.deleteFile(parts[1]);
             return "OK: File deleted";
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
             return "ERROR: " + e.getMessage();
+        } catch (Exception e) {
+            return "ERROR: Could not delete file";
         }
     }
 
@@ -127,7 +130,12 @@ public class ClientHandler implements Runnable {
         try {
             FileSystemManager fsm = FileSystemManager.getInstance("filesystem.dat", 1280);
             String[] files = fsm.listFiles();
-            return (files.length == 0) ? "No files" : String.join(", ", files);
+
+            if (files == null || files.length == 0) {
+                return "No files";
+            }
+
+            return String.join(", ", files);
         } catch (Exception e) {
             return "ERROR: " + e.getMessage();
         }
@@ -138,6 +146,7 @@ public class ClientHandler implements Runnable {
             if (in != null) in.close();
             if (out != null) out.close();
             if (clientSocket != null) clientSocket.close();
+            System.out.println("Client disconnected");
         } catch (IOException e) {
             System.err.println("Error closing resources: " + e.getMessage());
         }
